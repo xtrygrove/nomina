@@ -8,6 +8,6 @@ dependencies:
   - pynndescent=0.5.13=pyhd8ed1ab_1
   - python=3.12.3=h2628c8c_0_cpython
   - python-dateutil=2.9.0post0=py312haa95532_2
-    prefix: C:\Users\jfuentes\AppData\Local\miniconda3\envs\nomina
+prefix: C:\Users\jfuentes\AppData\Local\miniconda3\envs\nomina
 
 
