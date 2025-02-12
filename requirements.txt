@@ -1,10 +1,4 @@
-openpyxl=3.1.5=py312h827c3e9_1
+streamlit=1.42.0=pyhd8ed1ab_0
 pandas=2.2.3=py312h5da7b33_0
 pyjanitor=0.30.0=pyhd8ed1ab_0
-python=3.12.3=h2628c8c_0_cpython
-streamlit=1.42.0=pyhd8ed1ab_0
-
-
-
-
-
+openpyxl=3.1.5=py312h827c3e9_1
