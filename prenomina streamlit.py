@@ -9,8 +9,8 @@ import pandas as pd
 from janitor import clean_names
 
 # Configurar la página
-st.set_page_config(page_title='Pre-nómina', layout='wide')
-st.title('Detalle nómina acreedores')
+st.set_page_config(page_title='Pre_nomina', layout='wide')
+st.title('Detalle nómina')
 
 # Seleccionar fecha
 st.sidebar.header("Seleccionar fecha de nómina")
