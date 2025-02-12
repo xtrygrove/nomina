@@ -3,3 +3,4 @@ pandas
 pyjanitor
 xlsxwriter
 openpyxl
+--no-cache-dir
