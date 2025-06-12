@@ -34,7 +34,7 @@ if file_nomina and file_tesoreria:
               'simbolo_vencimiento_neto', 'moneda_del_documento', 'doc_compensacion', 'nombre_del_usuario'
           ], errors='ignore')
           .dropna(subset=['cuenta'])
-          .query("bloqueo_de_pago != 'A' and via_de_pago != 'C'")
+          .query("bloqueo_de_pago not in ['A', 'R'] and via_de_pago != 'C'")
           .drop(columns=['bloqueo_de_pago', 'via_de_pago'], errors='ignore')
     )
     
