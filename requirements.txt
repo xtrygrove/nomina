@@ -3,5 +3,3 @@ pandas
 pyjanitor
 xlsxwriter
 openpyxl
-io
-warnings
