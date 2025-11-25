@@ -47,6 +47,7 @@ file_tesoreria = st.sidebar.file_uploader("Subir archivo de Tesorería", type=["
 def load_excel(file):
     return pd.read_excel(file)
 
+
 if file_nomina and file_tesoreria:
     # Cargar archivos
     df = load_excel(file_nomina)
@@ -54,30 +55,49 @@ if file_nomina and file_tesoreria:
 
     # Limpiar nombres de columnas
     df = clean_column_names(df)
+    # Renombrar 'Proveedor' -> 'cuenta' antes de limpiar
     df_tes = clean_column_names(df_tes.rename(columns={'Proveedor': 'cuenta'}))
 
-    # Validar columnas obligatorias
+    # Validar columnas obligatorias nómina
     cols_nomina = ['cuenta', 'fecha_de_documento', 'vencimiento_neto']
     missing_cols = [col for col in cols_nomina if col not in df.columns]
     if missing_cols:
         st.error(f"Faltan columnas obligatorias en archivo de nómina: {missing_cols}")
         st.stop()
 
-    if 'nº_documento_de_pago' not in df_tes.columns or 'importe_pagado_en_ml' not in df_tes.columns:
-        st.error("El archivo de Tesorería debe tener 'nº_documento_de_pago' y 'importe_pagado_en_ml'.")
+    # Columnas esperadas en Tesorería luego de clean_column_names
+    doc_pago_col = 'n_documento_de_pago'
+    importe_col = 'importe_pagado_en_ml'
+
+    if doc_pago_col not in df_tes.columns or importe_col not in df_tes.columns:
+        st.error(
+            "El archivo de Tesorería debe tener columnas equivalentes a "
+            "'Nº documento de pago' y 'Importe pagado en ML' (que se limpian como "
+            f"'{doc_pago_col}' y '{importe_col}')."
+        )
+        st.write("Columnas detectadas en Tesorería:", list(df_tes.columns))
         st.stop()
 
     # Limpiar y filtrar nómina
     df = (
         df.astype({'cuenta': 'Int64'})
-          .drop(columns=[
-              'icono_part_abiertas_comp_', 'cta_contrapartida', 'nº_documento', 'asignacion',
-              'simbolo_vencimiento_neto', 'moneda_del_documento', 'doc_compensacion', 'nombre_del_usuario'
-          ], errors='ignore')
+          .drop(
+              columns=[
+                  'icono_part_abiertas_comp_', 'cta_contrapartida', 'nº_documento',
+                  'asignacion', 'simbolo_vencimiento_neto', 'moneda_del_documento',
+                  'doc_compensacion', 'nombre_del_usuario'
+              ],
+              errors='ignore'
+          )
           .dropna(subset=['cuenta'])
-          .query("bloqueo_de_pago not in ['A', 'R'] and via_de_pago != 'C'")
-          .drop(columns=['bloqueo_de_pago', 'via_de_pago'], errors='ignore')
     )
+
+    # Filtro de bloqueo de pago y vía de pago si existen
+    if 'bloqueo_de_pago' in df.columns and 'via_de_pago' in df.columns:
+        df = (
+            df.query("bloqueo_de_pago not in ['A', 'R'] and via_de_pago != 'C'")
+              .drop(columns=['bloqueo_de_pago', 'via_de_pago'], errors='ignore')
+        )
 
     # Formatear fechas y manejar errores
     df['fecha_de_documento'] = pd.to_datetime(df['fecha_de_documento'], errors='coerce')
@@ -91,10 +111,10 @@ if file_nomina and file_tesoreria:
 
     # Limpiar tesorería
     df_tes = (
-        df_tes.dropna(subset=['nº_documento_de_pago'])
-              .query("importe_pagado_en_ml <= -10000000")
-              .sort_values(by='importe_pagado_en_ml')
-              [['cuenta', 'importe_pagado_en_ml']]
+        df_tes.dropna(subset=[doc_pago_col])
+              .query(f"{importe_col} <= -10000000")
+              .sort_values(by=importe_col)
+              [['cuenta', importe_col]]
     )
 
     # Filtrar acreedores
@@ -123,3 +143,4 @@ if file_nomina and file_tesoreria:
     st.success("Archivo generado correctamente. Descárgalo arriba.")
 else:
     st.info("Por favor, carga ambos archivos para generar la nómina.")
+
