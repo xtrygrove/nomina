@@ -1,12 +1,30 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
 import streamlit as st
 import pandas as pd
-from janitor import clean_names
+import re
 import io
+
+# ---------------------------------------------------
+# Función para limpiar nombres de columnas
+# (reemplazo de janitor.clean_names)
+# ---------------------------------------------------
+def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # strip, lower
+    df.columns = df.columns.str.strip().str.lower()
+
+    # reemplazar espacios y caracteres no alfanuméricos por "_"
+    df.columns = [
+        re.sub(r"[^0-9a-zA-Z]+", "_", col)
+        for col in df.columns
+    ]
+
+    # quitar underscores repetidos y extremos
+    df.columns = [re.sub(r"_+", "_", col).strip("_") for col in df.columns]
+    return df
+
 
 # Configurar la página
 st.set_page_config(page_title='Pre_nómina', layout='wide')
@@ -33,11 +51,11 @@ if file_nomina and file_tesoreria:
     # Cargar archivos
     df = load_excel(file_nomina)
     df_tes = load_excel(file_tesoreria)
-    
+
     # Limpiar nombres de columnas
-    df = clean_names(df)
-    df_tes = clean_names(df_tes.rename(columns={'Proveedor': 'cuenta'}))
-    
+    df = clean_column_names(df)
+    df_tes = clean_column_names(df_tes.rename(columns={'Proveedor': 'cuenta'}))
+
     # Validar columnas obligatorias
     cols_nomina = ['cuenta', 'fecha_de_documento', 'vencimiento_neto']
     missing_cols = [col for col in cols_nomina if col not in df.columns]
@@ -73,7 +91,7 @@ if file_nomina and file_tesoreria:
 
     # Limpiar tesorería
     df_tes = (
-        df_tes.dropna(subset='nº_documento_de_pago')
+        df_tes.dropna(subset=['nº_documento_de_pago'])
               .query("importe_pagado_en_ml <= -10000000")
               .sort_values(by='importe_pagado_en_ml')
               [['cuenta', 'importe_pagado_en_ml']]
@@ -96,13 +114,12 @@ if file_nomina and file_tesoreria:
 
     # Botón de descarga
     st.download_button(
-        label="📥 Descargar Excel",
+        label="Descargar Excel",
         data=output,
         file_name="total_acreedores.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    st.success("Archivo generado correctamente. Descárgalo arriba 👆")
+    st.success("Archivo generado correctamente. Descárgalo arriba.")
 else:
     st.info("Por favor, carga ambos archivos para generar la nómina.")
-
