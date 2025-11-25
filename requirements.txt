@@ -1,5 +1,6 @@
 streamlit
 pandas
-pyjanitor
+pandas-flavor==0.6.0
+pyjanitor==0.24.0
 xlsxwriter
 openpyxl
