@@ -1,6 +1,4 @@
 streamlit
-pandas==2.1.4
-pandas-flavor==0.6.0
-pyjanitor==0.24.0
+pandas
 xlsxwriter
 openpyxl
