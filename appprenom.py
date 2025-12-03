@@ -127,10 +127,19 @@ if file_nomina and file_tesoreria:
     st.dataframe(df_filtered)
 
     # Generar archivo Excel en memoria
+    columnas_a_eliminar = [
+        'icono_part_abiertas_comp',
+        'asignaci_n',
+        's_mbolo_vencimiento_neto',
+        'bloqueo_de_pago',
+        'v_a_de_pago',
+        'doc_compensaci_n'
+    ]
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for cuenta in lista_proveedores:
-            df[df['cuenta'] == cuenta].to_excel(writer, sheet_name=str(cuenta), index=False)
+            df_prov = df[df['cuenta'] == cuenta].drop(columns=columnas_a_eliminar, errors='ignore')
+            df_prov.to_excel(writer, sheet_name=str(cuenta), index=False)
     output.seek(0)
 
     # Botón de descarga
