@@ -100,8 +100,8 @@ if file_nomina and file_tesoreria:
         )
 
     # Formatear fechas y manejar errores
-    df['fecha_de_documento'] = pd.to_datetime(df['fecha_de_documento'], errors='coerce')
-    df['vencimiento_neto'] = pd.to_datetime(df['vencimiento_neto'], errors='coerce')
+    df['fecha_de_documento'] = pd.to_datetime(df['fecha_de_documento'], errors='coerce').dt.date
+    df['vencimiento_neto'] = pd.to_datetime(df['vencimiento_neto'], errors='coerce').dt.date
     df = df.dropna(subset=['fecha_de_documento', 'vencimiento_neto'])
 
     # Calcular diferencias de días
