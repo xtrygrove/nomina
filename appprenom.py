@@ -34,7 +34,7 @@ st.title('Detalle de facturas para nómina')
 st.sidebar.header("Seleccionar fecha de nómina")
 fecha_referencia = st.sidebar.date_input(
     "Selecciona la fecha de referencia",
-    value=pd.to_datetime('01-01-2025', format='%d-%m-%Y')
+    value=pd.to_datetime('01-01-2026', format='%d-%m-%Y')
 )
 
 # Sidebar: carga de archivos
