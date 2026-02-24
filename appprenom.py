@@ -95,7 +95,7 @@ if file_nomina and file_tesoreria:
     # Filtro de bloqueo de pago y vía de pago si existen
     if 'bloqueo_de_pago' in df.columns and 'via_de_pago' in df.columns:
         df = (
-            df.query("bloqueo_de_pago not in ['A', 'R'] and via_de_pago != 'C'")
+            df.query("bloqueo_de_pago not in ['A'] and via_de_pago != 'C'")
               .drop(columns=['bloqueo_de_pago', 'via_de_pago'], errors='ignore')
         )
 
