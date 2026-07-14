@@ -25,7 +25,6 @@ EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 COLUMNS_TO_DROP_NOMINA = [
     "icono_part_abiertas_comp",
     "cta_contrapartida",
-    "n_documento",
     "asignaci_n",
     "s_mbolo_vencimiento_neto",
     "moneda_del_documento",
@@ -33,6 +32,14 @@ COLUMNS_TO_DROP_NOMINA = [
     "nombre_del_usuario",
 ]
 COLUMNS_TO_DROP_NOMINA_POST_FILTER = ["bloqueo_de_pago", "v_a_de_pago"]
+
+# Control preventivo de pagos duplicados por anticipos.
+DOCUMENT_TYPE_COLUMN_CANDIDATES = (
+    "clase_de_documento", "tipo_de_documento", "clase_documento", "tipo_documento",
+)
+PAYMENT_DOCUMENT_TYPES = frozenset({"KZ", "ZP"})
+CREDIT_DEBIT_NOTE_DOCUMENT_TYPES = frozenset({"EC", "ED"})
+GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
 
 
 # --- Funciones de Carga y Limpieza de Datos ---
@@ -88,6 +95,77 @@ def load_tesoreria_df(uploaded_file):
 
 
 # --- Funciones de Procesamiento ---
+def get_document_type_column(df: pd.DataFrame) -> str:
+    """Obtiene la columna SAP que contiene la clase de documento."""
+    for column in DOCUMENT_TYPE_COLUMN_CANDIDATES:
+        if column in df.columns:
+            return column
+    raise ValueError("No se encontró la columna de clase de documento SAP.")
+
+
+def get_amount_column(df: pd.DataFrame) -> str:
+    """Obtiene la columna de importe de la Lista PI."""
+    candidates = [column for column in df.columns if column.startswith("importe_en_moneda")]
+    if len(candidates) != 1:
+        raise ValueError("No se pudo identificar de forma unívoca la columna de importe.")
+    return candidates[0]
+
+
+def validate_payment_risk(
+    df_nomina: pd.DataFrame,
+    payment_document_types: set[str] | frozenset[str] = PAYMENT_DOCUMENT_TYPES,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Bloquea facturas duplicadas por anticipos del mismo proveedor e importe."""
+    document_type_column = get_document_type_column(df_nomina)
+    amount_column = get_amount_column(df_nomina)
+    validated_df = df_nomina.copy()
+    validated_df["clase_documento_sap"] = (
+        validated_df[document_type_column].fillna("").astype(str).str.strip().str.upper()
+    )
+    validated_df["monto_comparacion"] = (
+        pd.to_numeric(validated_df[amount_column], errors="coerce").abs().round(0)
+    )
+    payment_types = {item.strip().upper() for item in payment_document_types if item.strip()}
+    generic_mask = validated_df["clase_documento_sap"].isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
+    validated_df["estado_validacion"] = "APTO_PARA_CRUCE"
+    validated_df.loc[
+        validated_df["clase_documento_sap"].isin(payment_types | CREDIT_DEBIT_NOTE_DOCUMENT_TYPES),
+        "estado_validacion",
+    ] = "EXCLUIDO_RIESGO_DUPLICIDAD"
+    validated_df.loc[generic_mask, "estado_validacion"] = "RETENIDO_REVISION_ANTICIPO"
+    validated_df["documentos_anticipo_relacionados"] = ""
+
+    advances = validated_df[generic_mask].copy()
+    invoices = validated_df[validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")].copy()
+    advances["indice_anticipo"] = advances.index
+    invoices["indice_factura"] = invoices.index
+    matches = advances.merge(
+        invoices, on=["cuenta", "monto_comparacion"], how="inner",
+        suffixes=("_anticipo", "_factura"),
+    )
+    if not matches.empty:
+        advance_references = (
+            matches.groupby("indice_factura")["n_documento_anticipo"]
+            .apply(lambda docs: ", ".join(sorted({str(doc) for doc in docs})))
+            .to_dict()
+        )
+        validated_df.loc[
+            validated_df.index.isin(matches["indice_anticipo"]), "estado_validacion"
+        ] = "ANTICIPO_COINCIDE_FACTURA"
+        validated_df.loc[
+            validated_df.index.isin(advance_references), "estado_validacion"
+        ] = "BLOQUEADO_COINCIDENCIA_ANTICIPO"
+        for invoice_index, references in advance_references.items():
+            validated_df.loc[
+                invoice_index, "documentos_anticipo_relacionados"
+            ] = references
+
+    retained_df = validated_df[validated_df["estado_validacion"].ne("APTO_PARA_CRUCE")].copy()
+    blocked_invoices_df = validated_df[
+        validated_df["estado_validacion"].eq("BLOQUEADO_COINCIDENCIA_ANTICIPO")
+    ].copy()
+    payable_df = validated_df[validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")].copy()
+    return payable_df, retained_df, blocked_invoices_df
 def process_nomina_data_dates(df_nomina_input, fecha_referencia_dt):
     """Calcula las diferencias de días y añade columnas al DataFrame de nómina."""
     df_processed = df_nomina_input.copy()
@@ -174,9 +252,40 @@ def main():
                 )
                 return  # Detener ejecución si los datos base no son válidos
 
-            # Procesar datos de nómina (cálculo de días)
+            payment_types_input = st.sidebar.text_input(
+                "Clases SAP de pago ya registrado",
+                value=", ".join(sorted(PAYMENT_DOCUMENT_TYPES)),
+                help="Confirma estos códigos con la parametrización SAP local.",
+            )
+            payment_types = {
+                item.strip().upper() for item in payment_types_input.split(",") if item.strip()
+            }
+            df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (
+                validate_payment_risk(df_nomina_base, payment_types)
+            )
+
+            st.write("### Control preventivo de duplicidad")
+            if df_facturas_bloqueadas.empty:
+                st.success(
+                    "No se detectaron facturas con coincidencia exacta de proveedor "
+                    "e importe contra documentos AB/SA."
+                )
+            else:
+                st.error(
+                    f"Se bloquearon {len(df_facturas_bloqueadas):,} facturas por "
+                    "coincidir con un anticipo AB/SA del mismo proveedor."
+                )
+                st.dataframe(df_facturas_bloqueadas, use_container_width=True, hide_index=True)
+            if not df_documentos_retenidos.empty:
+                st.warning(
+                    f"Se retuvieron {len(df_documentos_retenidos):,} documentos "
+                    "antes del cruce. Revísalos antes de liberar pagos."
+                )
+                st.dataframe(df_documentos_retenidos, use_container_width=True, hide_index=True)
+
+            # Procesar solamente documentos aptos para pago.
             df_nomina_con_calculos = process_nomina_data_dates(
-                df_nomina_base, fecha_referencia_dt
+                df_nomina_validada, fecha_referencia_dt
             )
 
             # Obtener lista única de proveedores de tesorería
