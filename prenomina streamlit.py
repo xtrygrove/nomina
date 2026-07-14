@@ -77,11 +77,17 @@ def load_tesoreria_df(uploaded_file):
     # Usar nombres de columna limpios por janitor
     # 'nº_documento_de_pago' -> 'n_documento_de_pago'
     # 'importe_pagado_en_ml' ya está limpio
-    df_tes = (
-        df_tes.dropna(subset=["n_documento_de_pago"])  # Usar nombre limpio
-        .query("importe_pagado_en_ml <= -10000000")
-        .sort_values(by="importe_pagado_en_ml")[["cuenta", "importe_pagado_en_ml"]]
+    df_tes = df_tes.dropna(subset=["n_documento_de_pago"]).copy()
+    df_tes["importe_pagado_en_ml"] = pd.to_numeric(
+        df_tes["importe_pagado_en_ml"], errors="coerce"
     )
+    df_tes = df_tes.dropna(subset=["importe_pagado_en_ml"])
+    # Los $10 MM son prioridad de revisión, no un filtro de exclusión.
+    df_tes["prioridad_monto"] = df_tes["importe_pagado_en_ml"].abs().ge(10_000_000)
+    df_tes = df_tes.sort_values(
+        by=["prioridad_monto", "importe_pagado_en_ml"],
+        ascending=[False, True],
+    )[["cuenta", "importe_pagado_en_ml", "prioridad_monto"]]
     # Asegurar que 'cuenta' en tesorería también sea Int64 para consistencia
     if "cuenta" in df_tes.columns:
         try:
@@ -286,6 +292,15 @@ def main():
             # Procesar solamente documentos aptos para pago.
             df_nomina_con_calculos = process_nomina_data_dates(
                 df_nomina_validada, fecha_referencia_dt
+            )
+
+            st.caption(
+                "La nómina semanal de Tesorería es la base del proceso. "
+                "Los pagos iguales o superiores a $10 MM se marcan como prioritarios."
+            )
+            st.metric(
+                "Pagos prioritarios (≥ $10 MM)",
+                int(df_tesoreria["prioridad_monto"].sum()),
             )
 
             # Obtener lista única de proveedores de tesorería
