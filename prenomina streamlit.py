@@ -18,8 +18,6 @@ def clean_names(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # --- Constantes ---
-DEFAULT_REFERENCE_DATE_STR = "01-01-2026"
-DATE_FORMAT = "%d-%m-%Y"
 EXCEL_FILENAME = "total_acreedores.xlsx"
 EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -42,6 +40,7 @@ DOCUMENT_TYPE_COLUMN_CANDIDATES = (
 PAYMENT_DOCUMENT_TYPES = frozenset({"KZ", "ZP"})
 CREDIT_DEBIT_NOTE_DOCUMENT_TYPES = frozenset({"EC", "ED"})
 GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
+MINIMUM_EXPORT_TOTAL_CLP = 10_000_000
 
 
 # --- Funciones de Carga y Limpieza de Datos ---
@@ -60,6 +59,18 @@ def filter_eligible_payment_documents(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
+def mark_factoring_references(df: pd.DataFrame) -> pd.DataFrame:
+    """Marca documentos cedidos a una cuenta de factoring."""
+    marked_df = df.copy()
+    marked_df["referencia_factoring"] = (
+        marked_df.get("referencia", pd.Series("", index=marked_df.index))
+        .fillna("")
+        .astype(str)
+        .str.contains("FACTORING", case=False, na=False)
+    )
+    return marked_df
+
+
 @st.cache_data
 def load_nomina_df(uploaded_file):
     """Carga y limpia el archivo de nómina (Lista PI Acreedores)."""
@@ -73,6 +84,7 @@ def load_nomina_df(uploaded_file):
         .dropna(subset=["cuenta"])
     )
     df = filter_eligible_payment_documents(df)
+    df = mark_factoring_references(df)
     df = df.drop(columns=COLUMNS_TO_DROP_NOMINA_POST_FILTER, errors="ignore")
 
     # Convertir fechas a solo date (sin hora)
@@ -209,8 +221,33 @@ def process_nomina_data_dates(df_nomina_input, fecha_referencia_dt):
 
 
 # --- Funciones de Generación de Archivos ---
+def get_exportable_creditors(df: pd.DataFrame) -> list[int]:
+    """Obtiene acreedores cuyo saldo total absoluto alcanza $10 MM."""
+    required_columns = {"cuenta", "importe_en_moneda_doc"}
+    missing_columns = required_columns.difference(df.columns)
+    if missing_columns:
+        raise ValueError(
+            "Faltan columnas para calcular acreedores exportables: "
+            + ", ".join(sorted(missing_columns))
+        )
+
+    totals = (
+        df.groupby("cuenta", as_index=False)["importe_en_moneda_doc"]
+        .sum()
+        .assign(total_absoluto=lambda result: result["importe_en_moneda_doc"].abs())
+    )
+    return totals.loc[
+        totals["total_absoluto"].ge(MINIMUM_EXPORT_TOTAL_CLP), "cuenta"
+    ].tolist()
+
+
 def generate_excel_bytes(df_data_for_excel, lista_cuentas_proveedores):
-    """Genera un archivo Excel en memoria con una hoja por proveedor."""
+    """Genera un Excel sólo para acreedores con total absoluto igual o mayor a $10 MM."""
+    exportable_accounts = set(get_exportable_creditors(df_data_for_excel))
+    lista_cuentas_proveedores = [
+        cuenta for cuenta in lista_cuentas_proveedores if cuenta in exportable_accounts
+    ]
+
     # Construir mapeo cuenta -> nombre_1
     if "nombre_1" in df_data_for_excel.columns:
         nombre_map = (
@@ -379,10 +416,24 @@ def main():
             st.write("### Datos Filtrados de Acreedores")
             st.dataframe(df_nomina_filtrada_display)
 
-            # Generar y descargar archivo Excel
-            # El Excel se genera a partir de df_nomina_con_calculos y usa la lista de proveedores de tesorería.
+            factoring_count = int(
+                df_nomina_con_calculos["referencia_factoring"].sum()
+            )
+            if factoring_count:
+                st.info(
+                    f"Se detectaron {factoring_count:,} partidas con referencia FACTORING. "
+                    "Corresponden a facturas cedidas a la cuenta de factoring indicada."
+                )
+
+            acreedores_exportables = get_exportable_creditors(df_nomina_con_calculos)
+            st.metric(
+                "Acreedores exportables (total ≥ $10 MM)",
+                len(acreedores_exportables),
+            )
+
+            # El Excel incluye sólo hojas de acreedores con total absoluto ≥ $10 MM.
             excel_bytes = generate_excel_bytes(
-                df_nomina_con_calculos, lista_proveedores_tesoreria
+                df_nomina_con_calculos, acreedores_exportables
             )
 
             if excel_bytes:  # Solo mostrar botón si se generó contenido

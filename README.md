@@ -19,9 +19,11 @@ La Lista PI es el universo de documentos abiertos de SAP. Una partida puede entr
 - no tiene `Vía de pago = C`; y
 - su `Vencimiento neto` es menor o igual a la fecha de nómina.
 
-## Prioridad de revisión
+## Prioridad y exportación
 
-Los pagos por un importe absoluto igual o superior a $10.000.000 se marcan como prioritarios y se ordenan primero. Esta regla no excluye pagos menores.
+Los pagos por un importe absoluto igual o superior a $10.000.000 se marcan como prioritarios y se ordenan primero. Esta regla no excluye pagos menores de la revisión.
+
+El Excel descargable incluye una hoja sólo para los acreedores cuyo total de documentos aptos alcanza un importe absoluto igual o superior a $10.000.000.
 
 ## Control preventivo de anticipos
 
@@ -32,6 +34,7 @@ Los importes negativos representan deuda de la empresa hacia el proveedor.
 - Para cada `AB`/`SA`, la aplicación busca una factura propuesta del mismo proveedor con el mismo importe absoluto.
 - Ante una coincidencia exacta, bloquea la factura y muestra el número del documento SAP relacionado.
 - Las clases de documento de pagos ya registrados se pueden configurar desde la barra lateral.
+- Una referencia que contiene `FACTORING` identifica una factura cedida a la cuenta de factoring correspondiente. Se informa, pero no se excluye automáticamente.
 
 ## Ejecución
 

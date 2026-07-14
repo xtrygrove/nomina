@@ -82,5 +82,24 @@ class PaymentRiskTests(unittest.TestCase):
 
         self.assertEqual(selected.index.tolist(), [0, 1])
 
+    def test_exports_only_creditors_with_total_at_least_ten_million(self) -> None:
+        source = pd.DataFrame(
+            {
+                "cuenta": [1001, 1001, 1002],
+                "importe_en_moneda_doc": [-6_000_000, -4_000_000, -9_999_999],
+            }
+        )
+
+        exportable = MODULE.get_exportable_creditors(source)
+
+        self.assertEqual(exportable, [1001])
+
+    def test_marks_factoring_references_without_excluding_them(self) -> None:
+        source = pd.DataFrame({"referencia": ["FACTORING CESION", "Factura normal"]})
+
+        marked = MODULE.mark_factoring_references(source)
+
+        self.assertEqual(marked["referencia_factoring"].tolist(), [True, False])
+
 if __name__ == "__main__":
     unittest.main()
