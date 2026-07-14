@@ -266,8 +266,20 @@ def main():
             payment_types = {
                 item.strip().upper() for item in payment_types_input.split(",") if item.strip()
             }
+            # La nómina de Tesorería define el universo real a validar.
+            lista_proveedores_tesoreria = df_tesoreria["cuenta"].unique().tolist()
+            df_nomina_propuesta = df_nomina_base[
+                df_nomina_base["cuenta"].isin(lista_proveedores_tesoreria)
+            ].copy()
+            if df_nomina_propuesta.empty:
+                st.warning(
+                    "No se encontraron partidas abiertas en Lista PI para los "
+                    "proveedores incluidos en la nómina de Tesorería."
+                )
+                return
+
             df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (
-                validate_payment_risk(df_nomina_base, payment_types)
+                validate_payment_risk(df_nomina_propuesta, payment_types)
             )
 
             st.write("### Control preventivo de duplicidad")
