@@ -41,6 +41,13 @@ PAYMENT_DOCUMENT_TYPES = frozenset({"KZ", "ZP"})
 CREDIT_DEBIT_NOTE_DOCUMENT_TYPES = frozenset({"EC", "ED"})
 GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
 MINIMUM_EXPORT_TOTAL_CLP = 10_000_000
+EXPORT_COLUMNS_TO_EXCLUDE = [
+    "referencia_factoring",
+    "monto_comparacion",
+    "es_anticipo_potencial",
+    "estado_validacion",
+    "documentos_anticipo_relacionados",
+]
 
 
 # --- Funciones de Carga y Limpieza de Datos ---
@@ -306,6 +313,10 @@ def generate_excel_bytes(
                 df_data_for_excel["cuenta"] == cuenta_proveedor
             ]
             if not df_sheet.empty:  # Solo crear hoja si hay datos para ese proveedor
+                df_sheet = df_sheet.drop(
+                    columns=EXPORT_COLUMNS_TO_EXCLUDE,
+                    errors="ignore",
+                )
                 raw_name = str(nombre_map.get(cuenta_proveedor, cuenta_proveedor))
                 sheet_name = re.sub(r"[:/\\?*\[\]]", "_", raw_name)[:31]
                 df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)

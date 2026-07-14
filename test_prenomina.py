@@ -148,5 +148,26 @@ class PaymentRiskTests(unittest.TestCase):
         self.assertEqual(blocked["n_documento"].tolist(), [20])
 
 
+    def test_export_omits_internal_control_columns(self) -> None:
+        source = pd.DataFrame(
+            {
+                "cuenta": [1001],
+                "nombre_1": ["Proveedor"],
+                "importe_en_moneda_doc": [-10_000_000],
+                "referencia_factoring": [False],
+                "monto_comparacion": [10_000_000],
+                "es_anticipo_potencial": [False],
+                "estado_validacion": ["APTO_PARA_CRUCE"],
+                "documentos_anticipo_relacionados": [""],
+            }
+        )
+
+        excel_bytes = MODULE.generate_excel_bytes(source, [1001])
+        exported = pd.read_excel(io.BytesIO(excel_bytes))
+
+        self.assertTrue(
+            set(MODULE.EXPORT_COLUMNS_TO_EXCLUDE).isdisjoint(exported.columns)
+        )
+
 if __name__ == "__main__":
     unittest.main()
