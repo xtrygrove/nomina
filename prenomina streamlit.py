@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import re
 import io
+from datetime import date
 
 
 def clean_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -227,11 +228,9 @@ def main():
 
     # --- Sidebar: Entradas del Usuario ---
     st.sidebar.header("Seleccionar fecha de nómina")
-    default_date_val = pd.to_datetime(
-        DEFAULT_REFERENCE_DATE_STR, format=DATE_FORMAT
-    ).date()
+    default_date_val = date.today()
     fecha_referencia_input = st.sidebar.date_input(
-        "Selecciona la fecha de referencia", value=default_date_val
+        "Fecha de nómina (Vencimiento neto)", value=default_date_val
     )
 
     st.sidebar.header("Carga de archivos")
@@ -266,7 +265,7 @@ def main():
             payment_types = {
                 item.strip().upper() for item in payment_types_input.split(",") if item.strip()
             }
-            # La nómina de Tesorería define el universo real a validar.
+            # Tesorería define los proveedores y Vencimiento neto la propuesta semanal.
             lista_proveedores_tesoreria = df_tesoreria["cuenta"].unique().tolist()
             df_nomina_propuesta = df_nomina_base[
                 df_nomina_base["cuenta"].isin(lista_proveedores_tesoreria)
@@ -277,9 +276,47 @@ def main():
                     "proveedores incluidos en la nómina de Tesorería."
                 )
                 return
+            if "vencimiento_neto" not in df_nomina_propuesta.columns:
+                raise ValueError(
+                    "La Lista PI no contiene la columna Vencimiento neto, "
+                    "requerida para definir la nómina semanal."
+                )
 
+            fecha_nomina = fecha_referencia_dt.date()
+            df_documentos_fecha = df_nomina_propuesta[
+                df_nomina_propuesta["vencimiento_neto"].eq(fecha_nomina)
+            ].copy()
+            if df_documentos_fecha.empty:
+                st.warning(
+                    f"No hay partidas con vencimiento neto {fecha_nomina:%d-%m-%Y} "
+                    "para los proveedores de Tesorería."
+                )
+                return
+
+            # Los posibles anticipos se revisan aunque tengan un vencimiento distinto.
+            clases_documento = (
+                df_nomina_propuesta["clase_de_documento"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+            df_anticipos_proveedor = df_nomina_propuesta[
+                clases_documento.isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
+            ]
+            df_nomina_control = pd.concat(
+                [df_documentos_fecha, df_anticipos_proveedor]
+            )
+            df_nomina_control = df_nomina_control.loc[
+                ~df_nomina_control.index.duplicated(keep="first")
+            ].copy()
+
+            st.info(
+                f"Propuesta por vencimiento neto {fecha_nomina:%d-%m-%Y}: "
+                f"{len(df_documentos_fecha):,} partidas."
+            )
             df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (
-                validate_payment_risk(df_nomina_propuesta, payment_types)
+                validate_payment_risk(df_nomina_control, payment_types)
             )
 
             st.write("### Control preventivo de duplicidad")

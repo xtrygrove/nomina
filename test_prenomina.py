@@ -53,5 +53,17 @@ class PaymentRiskTests(unittest.TestCase):
         self.assertEqual(priority.tolist(), [False, True])
 
 
+    def test_selects_documents_by_net_due_date(self) -> None:
+        source = pd.DataFrame(
+            {
+                "cuenta": [1001, 1001],
+                "vencimiento_neto": [pd.Timestamp("2026-07-17").date(), pd.Timestamp("2026-07-18").date()],
+            }
+        )
+
+        selected = source[source["vencimiento_neto"].eq(pd.Timestamp("2026-07-17").date())]
+
+        self.assertEqual(selected.index.tolist(), [0])
+
 if __name__ == "__main__":
     unittest.main()

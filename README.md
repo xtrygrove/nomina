@@ -5,9 +5,10 @@ Aplicación Streamlit para validar la nómina de pagos semanal de Tesorería con
 ## Flujo operativo
 
 1. Carga la nómina de pagos enviada por Tesorería para el viernes correspondiente.
-2. La aplicación toma sus proveedores y montos como propuesta de pago.
-3. Consulta las partidas abiertas de esos proveedores en la Lista PI.
-4. Ejecuta controles de duplicidad, notas y anticipos.
+2. La aplicación toma sus proveedores como universo de pago.
+3. Incluye sólo partidas con `Vencimiento neto` igual a la fecha de nómina seleccionada.
+4. Consulta posibles anticipos `AB`/`SA` del proveedor, aun cuando tengan otra fecha.
+5. Ejecuta controles de duplicidad, notas y anticipos.
 5. Exporta el detalle validado por proveedor.
 
 ## Prioridad de revisión
