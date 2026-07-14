@@ -140,7 +140,6 @@ class PaymentRiskTests(unittest.TestCase):
 
         payable, _, blocked = MODULE.validate_payment_risk(
             payroll,
-            set(),
             advance_source=advances,
         )
 
