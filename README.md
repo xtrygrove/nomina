@@ -1,81 +1,52 @@
-# Nómina de Acreedores — Pre-nómina de Pago a Proveedores
+# Nómina semanal de pagos
 
-Aplicación web desarrollada con **Streamlit** para generar la pre-nómina de pago a proveedores (acreedores), cruzando datos del reporte de partidas abiertas con el reporte de Tesorería.
+Aplicación Streamlit para validar la nómina de pagos semanal de Tesorería contra la Lista PI de Acreedores antes de su liberación.
 
-## Descripción
+## Flujo operativo
 
-El proceso consiste en:
+1. Carga la nómina de pagos enviada por Tesorería para el viernes correspondiente.
+2. La aplicación toma sus proveedores como universo de pago.
+3. Incluye partidas con `Vencimiento neto` menor o igual a la fecha de nómina seleccionada: vencidas y con vencimiento hasta el viernes de pago.
+4. Consulta posibles anticipos `AB`/`SA` del proveedor, aun cuando tengan otra fecha.
+5. Ejecuta controles de duplicidad, notas y anticipos.
+5. Exporta el detalle validado por proveedor.
 
-1. Cargar el archivo **Lista PI Acreedores** con las partidas abiertas de proveedores.
-2. Cargar el archivo de **Tesorería** con los pagos realizados.
-3. La aplicación filtra, cruza y calcula los días de antigüedad de cada documento respecto a una fecha de referencia.
-4. Se puede visualizar el resultado en pantalla y descargar un **Excel** con una hoja por proveedor.
+## Elegibilidad de documentos
 
-## Estructura del Proyecto
+La Lista PI es el universo de documentos abiertos de SAP. Una partida puede entrar a la nómina sólo si:
 
-```
-nomina/
-├── prenomina streamlit.py   # Aplicación principal Streamlit
-├── appprenom.py             # Script auxiliar de procesamiento
-├── requirements.txt         # Dependencias del proyecto
-└── README.md                # Este archivo
+- no tiene `Bloqueo de pago = A`;
+- no tiene `Vía de pago = C`; y
+- su `Vencimiento neto` es menor o igual a la fecha de nómina.
+
+## Prioridad y exportación
+
+Los pagos por un importe absoluto igual o superior a $10.000.000 se marcan como prioritarios y se ordenan primero. Esta regla no excluye pagos menores de la revisión.
+
+El Excel descargable incluye una hoja sólo para los acreedores cuyo total dentro de la nómina sea menor o igual a -$10.000.000. Las hojas se ordenan desde la mayor hasta la menor deuda.
+
+## Control preventivo de anticipos
+
+Los importes negativos representan deuda de la empresa hacia el proveedor.
+
+- `EC` y `ED`: se excluyen de la propuesta.
+- `AB` y `SA`: se informan como posibles anticipos, pero permanecen en la nómina si no compensan otra factura.
+- Para cada `AB`/`SA`, la aplicación busca una factura propuesta del mismo proveedor con el mismo importe absoluto, incluso si el anticipo tiene otra fecha.
+- Ante una coincidencia exacta, bloquea la factura y muestra el número del documento SAP relacionado.
+- Las clases de documento de pagos ya registrados se pueden configurar desde la barra lateral.
+- Una referencia que contiene `FACTORING` identifica una factura cedida a la cuenta de factoring correspondiente. Se informa, pero no se excluye automáticamente.
+
+## Ejecución
+
+```bash
+pip install -r requirements.txt
+streamlit run "prenomina streamlit.py"
 ```
 
 ## Requisitos
 
-- Python 3.9+
-- Las dependencias listadas en `requirements.txt`:
-
-```
-streamlit
-pandas
-xlsxwriter
-openpyxl
-```
-
-## Instalación
-
-```bash
-pip install -r requirements.txt
-```
-
-## Uso
-
-```bash
-streamlit run "prenomina streamlit.py"
-```
-
-Luego en el navegador:
-
-1. En el panel lateral, selecciona la **fecha de referencia** para el cálculo de días.
-2. Sube el archivo **Lista PI Acreedores** (`.xlsx`).
-3. Sube el archivo de **Tesorería** (`.xlsx`).
-4. Visualiza la tabla filtrada y descarga el Excel con el botón **Descargar Excel**.
-
-## Archivos de Entrada Esperados
-
-### Lista PI Acreedores
-Columnas requeridas (después de limpieza de nombres):
-
-| Columna | Descripción |
-|---|---|
-| `cuenta` | Código de proveedor |
-| `nombre_1` | Nombre del proveedor |
-| `fecha_de_documento` | Fecha del documento contable |
-| `vencimiento_neto` | Fecha de vencimiento neto |
-| `bloqueo_de_pago` | Indicador de bloqueo (se excluye valor `A`) |
-| `v_a_de_pago` | Vía de pago (se excluye valor `C`) |
-
-### Tesorería
-Columnas requeridas:
-
-| Columna original | Columna limpia | Descripción |
-|---|---|---|
-| `Proveedor` | `cuenta` | Código de proveedor |
-| `Nº Documento de Pago` | `n_documento_de_pago` | Número de documento |
-| `Importe Pagado en ML` | `importe_pagado_en_ml` | Importe pagado (filtra ≤ -10.000.000) |
-
-## Salida
-
-- **Pantalla:** tabla con los acreedores que aparecen en Tesorería, con columnas adicionales `dias_fecha_documento` y `dias_vencimiento`.
-- **Excel (`total_acreedores.xlsx`):** una hoja por proveedor, con el nombre del proveedor como nombre de hoja.
+- Python 3.10 o superior
+- streamlit
+- pandas
+- openpyxl
+- xlsxwriter
