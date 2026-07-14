@@ -1,6 +1,7 @@
 """Pruebas unitarias del control de anticipos y priorización."""
 
 import importlib.util
+import io
 from pathlib import Path
 import unittest
 
@@ -100,6 +101,32 @@ class PaymentRiskTests(unittest.TestCase):
         marked = MODULE.mark_factoring_references(source)
 
         self.assertEqual(marked["referencia_factoring"].tolist(), [True, False])
+
+    def test_export_threshold_uses_all_open_documents(self) -> None:
+        payroll_documents = pd.DataFrame(
+            {
+                "cuenta": [1001],
+                "nombre_1": ["Bosch"],
+                "importe_en_moneda_doc": [-7_000_000],
+            }
+        )
+        all_open_documents = pd.DataFrame(
+            {
+                "cuenta": [1001, 1001],
+                "importe_en_moneda_doc": [-7_000_000, -4_000_000],
+            }
+        )
+
+        excel_bytes = MODULE.generate_excel_bytes(
+            payroll_documents,
+            [1001],
+            totals_source=all_open_documents,
+        )
+
+        self.assertEqual(
+            pd.ExcelFile(io.BytesIO(excel_bytes)).sheet_names,
+            ["Bosch"],
+        )
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,7 @@ La Lista PI es el universo de documentos abiertos de SAP. Una partida puede entr
 
 Los pagos por un importe absoluto igual o superior a $10.000.000 se marcan como prioritarios y se ordenan primero. Esta regla no excluye pagos menores de la revisión.
 
-El Excel descargable incluye una hoja sólo para los acreedores cuyo total de documentos aptos alcanza un importe absoluto igual o superior a $10.000.000.
+El Excel descargable incluye una hoja sólo para los acreedores cuyo total de documentos abiertos elegibles alcanza un importe absoluto igual o superior a $10.000.000. El umbral considera todos sus documentos abiertos; la hoja conserva sólo las partidas correspondientes a la fecha de nómina.
 
 ## Control preventivo de anticipos
 

@@ -241,9 +241,14 @@ def get_exportable_creditors(df: pd.DataFrame) -> list[int]:
     ].tolist()
 
 
-def generate_excel_bytes(df_data_for_excel, lista_cuentas_proveedores):
-    """Genera un Excel sólo para acreedores con total absoluto igual o mayor a $10 MM."""
-    exportable_accounts = set(get_exportable_creditors(df_data_for_excel))
+def generate_excel_bytes(
+    df_data_for_excel: pd.DataFrame,
+    lista_cuentas_proveedores: list[int],
+    totals_source: pd.DataFrame | None = None,
+) -> bytes:
+    """Genera hojas para acreedores cuyo total abierto elegible alcanza $10 MM."""
+    threshold_source = totals_source if totals_source is not None else df_data_for_excel
+    exportable_accounts = set(get_exportable_creditors(threshold_source))
     lista_cuentas_proveedores = [
         cuenta for cuenta in lista_cuentas_proveedores if cuenta in exportable_accounts
     ]
@@ -425,15 +430,22 @@ def main():
                     "Corresponden a facturas cedidas a la cuenta de factoring indicada."
                 )
 
-            acreedores_exportables = get_exportable_creditors(df_nomina_con_calculos)
+            # El umbral se calcula sobre todos los documentos abiertos elegibles
+            # del acreedor, no sólo sobre las partidas de esta fecha de nómina.
+            acreedores_exportables = get_exportable_creditors(df_nomina_propuesta)
             st.metric(
-                "Acreedores exportables (total ≥ $10 MM)",
+                "Acreedores exportables (total abierto ≥ $10 MM)",
                 len(acreedores_exportables),
             )
+            st.caption(
+                "El umbral considera el total abierto del acreedor. Cada hoja "
+                "contiene sólo las partidas que corresponden a la fecha de nómina."
+            )
 
-            # El Excel incluye sólo hojas de acreedores con total absoluto ≥ $10 MM.
             excel_bytes = generate_excel_bytes(
-                df_nomina_con_calculos, acreedores_exportables
+                df_nomina_con_calculos,
+                acreedores_exportables,
+                totals_source=df_nomina_propuesta,
             )
 
             if excel_bytes:  # Solo mostrar botón si se generó contenido
