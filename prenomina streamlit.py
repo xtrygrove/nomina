@@ -37,7 +37,6 @@ PAYMENT_CONTROL_COLUMNS = ("bloqueo_de_pago", "v_a_de_pago")
 DOCUMENT_TYPE_COLUMN_CANDIDATES = (
     "clase_de_documento", "tipo_de_documento", "clase_documento", "tipo_documento",
 )
-PAYMENT_DOCUMENT_TYPES = frozenset({"KZ", "ZP"})
 CREDIT_DEBIT_NOTE_DOCUMENT_TYPES = frozenset({"EC", "ED"})
 GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
 MINIMUM_EXPORT_TOTAL_CLP = 10_000_000
@@ -154,7 +153,6 @@ def get_amount_column(df: pd.DataFrame) -> str:
 
 def validate_payment_risk(
     df_nomina: pd.DataFrame,
-    payment_document_types: set[str] | frozenset[str] = PAYMENT_DOCUMENT_TYPES,
     advance_source: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Valida pagos duplicados contra anticipos del mismo proveedor e importe.
@@ -177,12 +175,9 @@ def validate_payment_risk(
     )
     validated_df["es_anticipo_potencial"] = generic_mask
     validated_df["estado_validacion"] = "APTO_PARA_CRUCE"
-    payment_types = {
-        item.strip().upper() for item in payment_document_types if item.strip()
-    }
     validated_df.loc[
         validated_df["clase_documento_sap"].isin(
-            payment_types | CREDIT_DEBIT_NOTE_DOCUMENT_TYPES
+            CREDIT_DEBIT_NOTE_DOCUMENT_TYPES
         ),
         "estado_validacion",
     ] = "EXCLUIDO_RIESGO_DUPLICIDAD"
@@ -360,14 +355,6 @@ def main():
                 )
                 return  # Detener ejecución si los datos base no son válidos
 
-            payment_types_input = st.sidebar.text_input(
-                "Clases SAP de pago ya registrado",
-                value=", ".join(sorted(PAYMENT_DOCUMENT_TYPES)),
-                help="Confirma estos códigos con la parametrización SAP local.",
-            )
-            payment_types = {
-                item.strip().upper() for item in payment_types_input.split(",") if item.strip()
-            }
             # Tesorería define los proveedores y la fecha de nómina es el corte de vencimiento.
             lista_proveedores_tesoreria = df_tesoreria["cuenta"].unique().tolist()
             df_nomina_propuesta = df_nomina_base[
@@ -414,7 +401,6 @@ def main():
             df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (
                 validate_payment_risk(
                     df_documentos_fecha,
-                    payment_types,
                     advance_source=df_nomina_propuesta,
                 )
             )

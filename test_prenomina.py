@@ -26,7 +26,7 @@ class PaymentRiskTests(unittest.TestCase):
             }
         )
 
-        payable, retained, blocked = MODULE.validate_payment_risk(source, set())
+        payable, retained, blocked = MODULE.validate_payment_risk(source)
 
         self.assertEqual(payable["n_documento"].tolist(), [30])
         self.assertEqual(blocked["n_documento"].tolist(), [20])
@@ -42,7 +42,7 @@ class PaymentRiskTests(unittest.TestCase):
             }
         )
 
-        payable, _, blocked = MODULE.validate_payment_risk(source, set())
+        payable, _, blocked = MODULE.validate_payment_risk(source)
 
         self.assertEqual(payable["n_documento"].tolist(), [10, 20])
         self.assertTrue(blocked.empty)
@@ -140,7 +140,6 @@ class PaymentRiskTests(unittest.TestCase):
 
         payable, _, blocked = MODULE.validate_payment_risk(
             payroll,
-            set(),
             advance_source=advances,
         )
 
