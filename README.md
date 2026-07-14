@@ -23,15 +23,15 @@ La Lista PI es el universo de documentos abiertos de SAP. Una partida puede entr
 
 Los pagos por un importe absoluto igual o superior a $10.000.000 se marcan como prioritarios y se ordenan primero. Esta regla no excluye pagos menores de la revisión.
 
-El Excel descargable incluye una hoja sólo para los acreedores cuyo total de documentos abiertos elegibles alcanza un importe absoluto igual o superior a $10.000.000. El umbral considera todos sus documentos abiertos; la hoja conserva sólo las partidas correspondientes a la fecha de nómina.
+El Excel descargable incluye una hoja sólo para los acreedores cuyo total dentro de la nómina sea menor o igual a -$10.000.000. Las hojas se ordenan desde la mayor hasta la menor deuda.
 
 ## Control preventivo de anticipos
 
 Los importes negativos representan deuda de la empresa hacia el proveedor.
 
 - `EC` y `ED`: se excluyen de la propuesta.
-- `AB` y `SA`: se retienen para revisión como posibles anticipos o documentos contables.
-- Para cada `AB`/`SA`, la aplicación busca una factura propuesta del mismo proveedor con el mismo importe absoluto.
+- `AB` y `SA`: se informan como posibles anticipos, pero permanecen en la nómina si no compensan otra factura.
+- Para cada `AB`/`SA`, la aplicación busca una factura propuesta del mismo proveedor con el mismo importe absoluto, incluso si el anticipo tiene otra fecha.
 - Ante una coincidencia exacta, bloquea la factura y muestra el número del documento SAP relacionado.
 - Las clases de documento de pagos ya registrados se pueden configurar desde la barra lateral.
 - Una referencia que contiene `FACTORING` identifica una factura cedida a la cuenta de factoring correspondiente. Se informa, pero no se excluye automáticamente.

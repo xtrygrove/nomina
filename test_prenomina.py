@@ -44,7 +44,7 @@ class PaymentRiskTests(unittest.TestCase):
 
         payable, _, blocked = MODULE.validate_payment_risk(source, set())
 
-        self.assertEqual(payable["n_documento"].tolist(), [20])
+        self.assertEqual(payable["n_documento"].tolist(), [10, 20])
         self.assertTrue(blocked.empty)
 
     def test_priority_includes_payment_below_ten_million(self) -> None:
@@ -102,31 +102,51 @@ class PaymentRiskTests(unittest.TestCase):
 
         self.assertEqual(marked["referencia_factoring"].tolist(), [True, False])
 
-    def test_export_threshold_uses_all_open_documents(self) -> None:
+    def test_export_sheets_follow_payment_total_order(self) -> None:
         payroll_documents = pd.DataFrame(
             {
-                "cuenta": [1001],
-                "nombre_1": ["Bosch"],
-                "importe_en_moneda_doc": [-7_000_000],
-            }
-        )
-        all_open_documents = pd.DataFrame(
-            {
-                "cuenta": [1001, 1001],
-                "importe_en_moneda_doc": [-7_000_000, -4_000_000],
+                "cuenta": [1001, 1002, 1001, 1003],
+                "nombre_1": ["Bosch", "Logística", "Bosch", "Menor"],
+                "importe_en_moneda_doc": [-7_000_000, -20_000_000, -4_000_000, -9_000_000],
             }
         )
 
-        excel_bytes = MODULE.generate_excel_bytes(
-            payroll_documents,
-            [1001],
-            totals_source=all_open_documents,
-        )
+        exportable = MODULE.get_exportable_creditors(payroll_documents)
+        excel_bytes = MODULE.generate_excel_bytes(payroll_documents, exportable)
 
+        self.assertEqual(exportable, [1002, 1001])
         self.assertEqual(
             pd.ExcelFile(io.BytesIO(excel_bytes)).sheet_names,
-            ["Bosch"],
+            ["Logística", "Bosch"],
         )
+
+    def test_future_advance_blocks_matching_payroll_invoice(self) -> None:
+        payroll = pd.DataFrame(
+            {
+                "cuenta": [1001],
+                "n_documento": [20],
+                "clase_de_documento": ["EF"],
+                "importe_en_moneda_doc": [-5_000],
+            }
+        )
+        advances = pd.DataFrame(
+            {
+                "cuenta": [1001],
+                "n_documento": [10],
+                "clase_de_documento": ["AB"],
+                "importe_en_moneda_doc": [-5_000],
+            }
+        )
+
+        payable, _, blocked = MODULE.validate_payment_risk(
+            payroll,
+            set(),
+            advance_source=advances,
+        )
+
+        self.assertTrue(payable.empty)
+        self.assertEqual(blocked["n_documento"].tolist(), [20])
+
 
 if __name__ == "__main__":
     unittest.main()

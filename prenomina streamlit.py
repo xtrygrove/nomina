@@ -148,8 +148,14 @@ def get_amount_column(df: pd.DataFrame) -> str:
 def validate_payment_risk(
     df_nomina: pd.DataFrame,
     payment_document_types: set[str] | frozenset[str] = PAYMENT_DOCUMENT_TYPES,
+    advance_source: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Bloquea facturas duplicadas por anticipos del mismo proveedor e importe."""
+    """Valida pagos duplicados contra anticipos del mismo proveedor e importe.
+
+    Los AB/SA de la fecha de nómina permanecen incluidos y se reportan. Sólo se
+    retienen cuando compensan exactamente otra factura propuesta. Los AB/SA de
+    otras fechas se usan como referencia de control, sin incorporarse a la nómina.
+    """
     document_type_column = get_document_type_column(df_nomina)
     amount_column = get_amount_column(df_nomina)
     validated_df = df_nomina.copy()
@@ -159,22 +165,44 @@ def validate_payment_risk(
     validated_df["monto_comparacion"] = (
         pd.to_numeric(validated_df[amount_column], errors="coerce").abs().round(0)
     )
-    payment_types = {item.strip().upper() for item in payment_document_types if item.strip()}
-    generic_mask = validated_df["clase_documento_sap"].isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
+    generic_mask = validated_df["clase_documento_sap"].isin(
+        GENERIC_ACCOUNTING_DOCUMENT_TYPES
+    )
+    validated_df["es_anticipo_potencial"] = generic_mask
     validated_df["estado_validacion"] = "APTO_PARA_CRUCE"
+    payment_types = {
+        item.strip().upper() for item in payment_document_types if item.strip()
+    }
     validated_df.loc[
-        validated_df["clase_documento_sap"].isin(payment_types | CREDIT_DEBIT_NOTE_DOCUMENT_TYPES),
+        validated_df["clase_documento_sap"].isin(
+            payment_types | CREDIT_DEBIT_NOTE_DOCUMENT_TYPES
+        ),
         "estado_validacion",
     ] = "EXCLUIDO_RIESGO_DUPLICIDAD"
-    validated_df.loc[generic_mask, "estado_validacion"] = "RETENIDO_REVISION_ANTICIPO"
     validated_df["documentos_anticipo_relacionados"] = ""
 
-    advances = validated_df[generic_mask].copy()
-    invoices = validated_df[validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")].copy()
+    source_df = advance_source.copy() if advance_source is not None else df_nomina.copy()
+    source_type_column = get_document_type_column(source_df)
+    source_amount_column = get_amount_column(source_df)
+    source_df["clase_documento_sap"] = (
+        source_df[source_type_column].fillna("").astype(str).str.strip().str.upper()
+    )
+    source_df["monto_comparacion"] = (
+        pd.to_numeric(source_df[source_amount_column], errors="coerce").abs().round(0)
+    )
+    advances = source_df[
+        source_df["clase_documento_sap"].isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
+    ].copy()
     advances["indice_anticipo"] = advances.index
+
+    invoices = validated_df[
+        validated_df["estado_validacion"].eq("APTO_PARA_CRUCE") & ~generic_mask
+    ].copy()
     invoices["indice_factura"] = invoices.index
     matches = advances.merge(
-        invoices, on=["cuenta", "monto_comparacion"], how="inner",
+        invoices,
+        on=["cuenta", "monto_comparacion"],
+        how="inner",
         suffixes=("_anticipo", "_factura"),
     )
     if not matches.empty:
@@ -183,22 +211,33 @@ def validate_payment_risk(
             .apply(lambda docs: ", ".join(sorted({str(doc) for doc in docs})))
             .to_dict()
         )
+        candidate_advance_indexes = set(validated_df.index[generic_mask])
+        matched_advance_indexes = set(matches["indice_anticipo"])
+        matched_advance_indexes_in_nomina = (
+            candidate_advance_indexes & matched_advance_indexes
+        )
         validated_df.loc[
-            validated_df.index.isin(matches["indice_anticipo"]), "estado_validacion"
+            validated_df.index.isin(matched_advance_indexes_in_nomina),
+            "estado_validacion",
         ] = "ANTICIPO_COINCIDE_FACTURA"
         validated_df.loc[
-            validated_df.index.isin(advance_references), "estado_validacion"
+            validated_df.index.isin(advance_references),
+            "estado_validacion",
         ] = "BLOQUEADO_COINCIDENCIA_ANTICIPO"
         for invoice_index, references in advance_references.items():
             validated_df.loc[
                 invoice_index, "documentos_anticipo_relacionados"
             ] = references
 
-    retained_df = validated_df[validated_df["estado_validacion"].ne("APTO_PARA_CRUCE")].copy()
+    retained_df = validated_df[
+        validated_df["estado_validacion"].ne("APTO_PARA_CRUCE")
+    ].copy()
     blocked_invoices_df = validated_df[
         validated_df["estado_validacion"].eq("BLOQUEADO_COINCIDENCIA_ANTICIPO")
     ].copy()
-    payable_df = validated_df[validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")].copy()
+    payable_df = validated_df[
+        validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")
+    ].copy()
     return payable_df, retained_df, blocked_invoices_df
 def process_nomina_data_dates(df_nomina_input, fecha_referencia_dt):
     """Calcula las diferencias de días y añade columnas al DataFrame de nómina."""
@@ -222,7 +261,7 @@ def process_nomina_data_dates(df_nomina_input, fecha_referencia_dt):
 
 # --- Funciones de Generación de Archivos ---
 def get_exportable_creditors(df: pd.DataFrame) -> list[int]:
-    """Obtiene acreedores cuyo saldo total absoluto alcanza $10 MM."""
+    """Obtiene acreedores de la nómina con total igual o menor a -$10 MM."""
     required_columns = {"cuenta", "importe_en_moneda_doc"}
     missing_columns = required_columns.difference(df.columns)
     if missing_columns:
@@ -234,21 +273,17 @@ def get_exportable_creditors(df: pd.DataFrame) -> list[int]:
     totals = (
         df.groupby("cuenta", as_index=False)["importe_en_moneda_doc"]
         .sum()
-        .assign(total_absoluto=lambda result: result["importe_en_moneda_doc"].abs())
+        .sort_values("importe_en_moneda_doc")
     )
     return totals.loc[
-        totals["total_absoluto"].ge(MINIMUM_EXPORT_TOTAL_CLP), "cuenta"
+        totals["importe_en_moneda_doc"].le(-MINIMUM_EXPORT_TOTAL_CLP), "cuenta"
     ].tolist()
-
-
 def generate_excel_bytes(
     df_data_for_excel: pd.DataFrame,
     lista_cuentas_proveedores: list[int],
-    totals_source: pd.DataFrame | None = None,
 ) -> bytes:
-    """Genera hojas para acreedores cuyo total abierto elegible alcanza $10 MM."""
-    threshold_source = totals_source if totals_source is not None else df_data_for_excel
-    exportable_accounts = set(get_exportable_creditors(threshold_source))
+    """Genera hojas ordenadas para acreedores con total de nómina menor a -$10 MM."""
+    exportable_accounts = set(get_exportable_creditors(df_data_for_excel))
     lista_cuentas_proveedores = [
         cuenta for cuenta in lista_cuentas_proveedores if cuenta in exportable_accounts
     ]
@@ -350,22 +385,15 @@ def main():
                 )
                 return
 
-            # Los posibles anticipos se revisan aunque tengan un vencimiento distinto.
-            clases_documento = (
-                df_nomina_propuesta["clase_de_documento"]
+            clases_documento_fecha = (
+                df_documentos_fecha["clase_de_documento"]
                 .fillna("")
                 .astype(str)
                 .str.strip()
                 .str.upper()
             )
-            df_anticipos_proveedor = df_nomina_propuesta[
-                clases_documento.isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
-            ]
-            df_nomina_control = pd.concat(
-                [df_documentos_fecha, df_anticipos_proveedor]
-            )
-            df_nomina_control = df_nomina_control.loc[
-                ~df_nomina_control.index.duplicated(keep="first")
+            df_anticipos_nomina = df_documentos_fecha[
+                clases_documento_fecha.isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
             ].copy()
 
             st.info(
@@ -373,7 +401,11 @@ def main():
                 f"{len(df_documentos_fecha):,} partidas."
             )
             df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (
-                validate_payment_risk(df_nomina_control, payment_types)
+                validate_payment_risk(
+                    df_documentos_fecha,
+                    payment_types,
+                    advance_source=df_nomina_propuesta,
+                )
             )
 
             st.write("### Control preventivo de duplicidad")
@@ -430,22 +462,30 @@ def main():
                     "Corresponden a facturas cedidas a la cuenta de factoring indicada."
                 )
 
-            # El umbral se calcula sobre todos los documentos abiertos elegibles
-            # del acreedor, no sólo sobre las partidas de esta fecha de nómina.
-            acreedores_exportables = get_exportable_creditors(df_nomina_propuesta)
+            if not df_anticipos_nomina.empty:
+                st.warning(
+                    f"Se detectaron {len(df_anticipos_nomina):,} documentos AB/SA "
+                    "en la nómina. Se incluyen y quedan identificados para revisión."
+                )
+                st.dataframe(
+                    df_anticipos_nomina,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            acreedores_exportables = get_exportable_creditors(df_nomina_con_calculos)
             st.metric(
-                "Acreedores exportables (total abierto ≥ $10 MM)",
+                "Acreedores exportables (total nómina ≤ -$10 MM)",
                 len(acreedores_exportables),
             )
             st.caption(
-                "El umbral considera el total abierto del acreedor. Cada hoja "
-                "contiene sólo las partidas que corresponden a la fecha de nómina."
+                "Las hojas se ordenan desde el mayor al menor monto por pagar y "
+                "consideran sólo acreedores con total de nómina menor o igual a -$10 MM."
             )
 
             excel_bytes = generate_excel_bytes(
                 df_nomina_con_calculos,
                 acreedores_exportables,
-                totals_source=df_nomina_propuesta,
             )
 
             if excel_bytes:  # Solo mostrar botón si se generó contenido
