@@ -33,7 +33,6 @@ Los importes negativos representan deuda de la empresa hacia el proveedor.
 - `AB` y `SA`: se informan como posibles anticipos, pero permanecen en la nómina si no compensan otra factura.
 - Para cada `AB`/`SA`, la aplicación busca una factura propuesta del mismo proveedor con el mismo importe absoluto, incluso si el anticipo tiene otra fecha.
 - Ante una coincidencia exacta, bloquea la factura y muestra el número del documento SAP relacionado.
-- Las clases de documento de pagos ya registrados se pueden configurar desde la barra lateral.
 - Una referencia que contiene `FACTORING` identifica una factura cedida a la cuenta de factoring correspondiente. Se informa, pero no se excluye automáticamente.
 
 ## Ejecución
