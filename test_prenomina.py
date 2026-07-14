@@ -65,5 +65,22 @@ class PaymentRiskTests(unittest.TestCase):
 
         self.assertEqual(eligible.index.tolist(), [0, 3])
 
+    def test_includes_documents_due_on_or_before_payroll_date(self) -> None:
+        source = pd.DataFrame(
+            {
+                "vencimiento_neto": [
+                    pd.Timestamp("2026-07-14").date(),
+                    pd.Timestamp("2026-07-17").date(),
+                    pd.Timestamp("2026-07-18").date(),
+                ]
+            }
+        )
+
+        selected = source[
+            source["vencimiento_neto"].le(pd.Timestamp("2026-07-17").date())
+        ]
+
+        self.assertEqual(selected.index.tolist(), [0, 1])
+
 if __name__ == "__main__":
     unittest.main()
