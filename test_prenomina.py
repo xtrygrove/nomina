@@ -53,17 +53,17 @@ class PaymentRiskTests(unittest.TestCase):
         self.assertEqual(priority.tolist(), [False, True])
 
 
-    def test_selects_documents_by_net_due_date(self) -> None:
+    def test_excludes_blocked_and_payment_method_c_documents(self) -> None:
         source = pd.DataFrame(
             {
-                "cuenta": [1001, 1001],
-                "vencimiento_neto": [pd.Timestamp("2026-07-17").date(), pd.Timestamp("2026-07-18").date()],
+                "bloqueo_de_pago": ["", "A", "", None],
+                "v_a_de_pago": ["", "", "C", None],
             }
         )
 
-        selected = source[source["vencimiento_neto"].eq(pd.Timestamp("2026-07-17").date())]
+        eligible = MODULE.filter_eligible_payment_documents(source)
 
-        self.assertEqual(selected.index.tolist(), [0])
+        self.assertEqual(eligible.index.tolist(), [0, 3])
 
 if __name__ == "__main__":
     unittest.main()

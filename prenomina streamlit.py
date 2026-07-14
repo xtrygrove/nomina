@@ -33,6 +33,7 @@ COLUMNS_TO_DROP_NOMINA = [
     "nombre_del_usuario",
 ]
 COLUMNS_TO_DROP_NOMINA_POST_FILTER = ["bloqueo_de_pago", "v_a_de_pago"]
+PAYMENT_CONTROL_COLUMNS = ("bloqueo_de_pago", "v_a_de_pago")
 
 # Control preventivo de pagos duplicados por anticipos.
 DOCUMENT_TYPE_COLUMN_CANDIDATES = (
@@ -44,6 +45,21 @@ GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
 
 
 # --- Funciones de Carga y Limpieza de Datos ---
+def filter_eligible_payment_documents(df: pd.DataFrame) -> pd.DataFrame:
+    """Conserva sólo partidas sin bloqueo A ni vía de pago C."""
+    missing_columns = [column for column in PAYMENT_CONTROL_COLUMNS if column not in df]
+    if missing_columns:
+        raise ValueError(
+            "La Lista PI no contiene columnas requeridas para validar la nómina: "
+            + ", ".join(missing_columns)
+        )
+
+    payment_block = df["bloqueo_de_pago"].fillna("").astype(str).str.strip().str.upper()
+    payment_method = df["v_a_de_pago"].fillna("").astype(str).str.strip().str.upper()
+    return df[payment_block.ne("A") & payment_method.ne("C")].copy()
+
+
+
 @st.cache_data
 def load_nomina_df(uploaded_file):
     """Carga y limpia el archivo de nómina (Lista PI Acreedores)."""
@@ -56,8 +72,7 @@ def load_nomina_df(uploaded_file):
         .drop(columns=COLUMNS_TO_DROP_NOMINA, errors="ignore")
         .dropna(subset=["cuenta"])
     )
-    if "bloqueo_de_pago" in df.columns and "v_a_de_pago" in df.columns:
-        df = df.query("bloqueo_de_pago != 'A' and v_a_de_pago != 'C'")
+    df = filter_eligible_payment_documents(df)
     df = df.drop(columns=COLUMNS_TO_DROP_NOMINA_POST_FILTER, errors="ignore")
 
     # Convertir fechas a solo date (sin hora)
@@ -230,7 +245,7 @@ def main():
     st.sidebar.header("Seleccionar fecha de nómina")
     default_date_val = date.today()
     fecha_referencia_input = st.sidebar.date_input(
-        "Fecha de nómina (Vencimiento neto)", value=default_date_val
+        "Fecha de nómina (corte de vencimiento)", value=default_date_val
     )
 
     st.sidebar.header("Carga de archivos")
@@ -265,7 +280,7 @@ def main():
             payment_types = {
                 item.strip().upper() for item in payment_types_input.split(",") if item.strip()
             }
-            # Tesorería define los proveedores y Vencimiento neto la propuesta semanal.
+            # Tesorería define los proveedores y la fecha de nómina es el corte de vencimiento.
             lista_proveedores_tesoreria = df_tesoreria["cuenta"].unique().tolist()
             df_nomina_propuesta = df_nomina_base[
                 df_nomina_base["cuenta"].isin(lista_proveedores_tesoreria)
@@ -284,11 +299,11 @@ def main():
 
             fecha_nomina = fecha_referencia_dt.date()
             df_documentos_fecha = df_nomina_propuesta[
-                df_nomina_propuesta["vencimiento_neto"].eq(fecha_nomina)
+                df_nomina_propuesta["vencimiento_neto"].le(fecha_nomina)
             ].copy()
             if df_documentos_fecha.empty:
                 st.warning(
-                    f"No hay partidas con vencimiento neto {fecha_nomina:%d-%m-%Y} "
+                    f"No hay partidas con vencimiento neto hasta {fecha_nomina:%d-%m-%Y} "
                     "para los proveedores de Tesorería."
                 )
                 return
@@ -312,7 +327,7 @@ def main():
             ].copy()
 
             st.info(
-                f"Propuesta por vencimiento neto {fecha_nomina:%d-%m-%Y}: "
+                f"Propuesta con vencimiento neto hasta {fecha_nomina:%d-%m-%Y}: "
                 f"{len(df_documentos_fecha):,} partidas."
             )
             df_nomina_validada, df_documentos_retenidos, df_facturas_bloqueadas = (

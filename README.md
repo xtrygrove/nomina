@@ -6,10 +6,18 @@ Aplicación Streamlit para validar la nómina de pagos semanal de Tesorería con
 
 1. Carga la nómina de pagos enviada por Tesorería para el viernes correspondiente.
 2. La aplicación toma sus proveedores como universo de pago.
-3. Incluye sólo partidas con `Vencimiento neto` igual a la fecha de nómina seleccionada.
+3. Incluye partidas con `Vencimiento neto` menor o igual a la fecha de nómina seleccionada: vencidas y con vencimiento hasta el viernes de pago.
 4. Consulta posibles anticipos `AB`/`SA` del proveedor, aun cuando tengan otra fecha.
 5. Ejecuta controles de duplicidad, notas y anticipos.
 5. Exporta el detalle validado por proveedor.
+
+## Elegibilidad de documentos
+
+La Lista PI es el universo de documentos abiertos de SAP. Una partida puede entrar a la nómina sólo si:
+
+- no tiene `Bloqueo de pago = A`;
+- no tiene `Vía de pago = C`; y
+- su `Vencimiento neto` es menor o igual a la fecha de nómina.
 
 ## Prioridad de revisión
 
