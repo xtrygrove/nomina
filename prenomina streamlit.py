@@ -37,7 +37,6 @@ PAYMENT_CONTROL_COLUMNS = ("bloqueo_de_pago", "v_a_de_pago")
 DOCUMENT_TYPE_COLUMN_CANDIDATES = (
     "clase_de_documento", "tipo_de_documento", "clase_documento", "tipo_documento",
 )
-CREDIT_DEBIT_NOTE_DOCUMENT_TYPES = frozenset({"EC", "ED"})
 GENERIC_ACCOUNTING_DOCUMENT_TYPES = frozenset({"AB", "SA"})
 MINIMUM_EXPORT_TOTAL_CLP = 10_000_000
 EXPORT_COLUMNS_TO_EXCLUDE = [
@@ -160,6 +159,8 @@ def validate_payment_risk(
     Los AB/SA de la fecha de nómina permanecen incluidos y se reportan. Sólo se
     retienen cuando compensan exactamente otra factura propuesta. Los AB/SA de
     otras fechas se usan como referencia de control, sin incorporarse a la nómina.
+    Las notas de crédito/débito (EC/ED) son correcciones de monto al pago del
+    proveedor y se incluyen siempre en la nómina pagable.
     """
     document_type_column = get_document_type_column(df_nomina)
     amount_column = get_amount_column(df_nomina)
@@ -175,12 +176,6 @@ def validate_payment_risk(
     )
     validated_df["es_anticipo_potencial"] = generic_mask
     validated_df["estado_validacion"] = "APTO_PARA_CRUCE"
-    validated_df.loc[
-        validated_df["clase_documento_sap"].isin(
-            CREDIT_DEBIT_NOTE_DOCUMENT_TYPES
-        ),
-        "estado_validacion",
-    ] = "EXCLUIDO_RIESGO_DUPLICIDAD"
     validated_df["documentos_anticipo_relacionados"] = ""
 
     source_df = advance_source.copy() if advance_source is not None else df_nomina.copy()
