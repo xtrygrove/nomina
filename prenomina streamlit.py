@@ -45,6 +45,7 @@ EXPORT_COLUMNS_TO_EXCLUDE = [
     "es_anticipo_potencial",
     "estado_validacion",
     "documentos_anticipo_relacionados",
+    "requiere_revision_manual",
 ]
 
 
@@ -154,13 +155,16 @@ def validate_payment_risk(
     df_nomina: pd.DataFrame,
     advance_source: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Valida pagos duplicados contra anticipos del mismo proveedor e importe.
+    """Alerta sobre facturas de proveedores con anticipos AB/SA asociados.
 
     Los AB/SA de la fecha de nómina permanecen incluidos y se reportan. Sólo se
     retienen cuando compensan exactamente otra factura propuesta. Los AB/SA de
     otras fechas se usan como referencia de control, sin incorporarse a la nómina.
     Las notas de crédito/débito (EC/ED) son correcciones de monto al pago del
     proveedor y se incluyen siempre en la nómina pagable.
+
+    Además, se marca `requiere_revision_manual` cuando un proveedor tiene
+    anticipos AB/SA relacionados, para validar el pago antes de liberarlo.
     """
     document_type_column = get_document_type_column(df_nomina)
     amount_column = get_amount_column(df_nomina)
@@ -177,6 +181,7 @@ def validate_payment_risk(
     validated_df["es_anticipo_potencial"] = generic_mask
     validated_df["estado_validacion"] = "APTO_PARA_CRUCE"
     validated_df["documentos_anticipo_relacionados"] = ""
+    validated_df["requiere_revision_manual"] = False
 
     source_df = advance_source.copy() if advance_source is not None else df_nomina.copy()
     source_type_column = get_document_type_column(source_df)
@@ -198,7 +203,7 @@ def validate_payment_risk(
     invoices["indice_factura"] = invoices.index
     matches = advances.merge(
         invoices,
-        on=["cuenta", "monto_comparacion"],
+        on=["cuenta"],
         how="inner",
         suffixes=("_anticipo", "_factura"),
     )
@@ -215,12 +220,12 @@ def validate_payment_risk(
         )
         validated_df.loc[
             validated_df.index.isin(matched_advance_indexes_in_nomina),
-            "estado_validacion",
-        ] = "ANTICIPO_COINCIDE_FACTURA"
+            "requiere_revision_manual",
+        ] = True
         validated_df.loc[
             validated_df.index.isin(advance_references),
-            "estado_validacion",
-        ] = "BLOQUEADO_COINCIDENCIA_ANTICIPO"
+            "requiere_revision_manual",
+        ] = True
         for invoice_index, references in advance_references.items():
             validated_df.loc[
                 invoice_index, "documentos_anticipo_relacionados"
@@ -230,7 +235,7 @@ def validate_payment_risk(
         validated_df["estado_validacion"].ne("APTO_PARA_CRUCE")
     ].copy()
     blocked_invoices_df = validated_df[
-        validated_df["estado_validacion"].eq("BLOQUEADO_COINCIDENCIA_ANTICIPO")
+        validated_df["requiere_revision_manual"] & ~generic_mask
     ].copy()
     payable_df = validated_df[
         validated_df["estado_validacion"].eq("APTO_PARA_CRUCE")
@@ -400,16 +405,21 @@ def main():
                 )
             )
 
-            st.write("### Control preventivo de duplicidad")
+            st.write("### Alerta preventiva de duplicidad")
             if df_facturas_bloqueadas.empty:
                 st.success(
-                    "No se detectaron facturas con coincidencia exacta de proveedor "
-                    "e importe contra documentos AB/SA."
+                    "No se detectaron facturas de proveedores con documentos "
+                    "AB/SA asociados."
                 )
             else:
-                st.error(
-                    f"Se bloquearon {len(df_facturas_bloqueadas):,} facturas por "
-                    "coincidir con un anticipo AB/SA del mismo proveedor."
+                proveedores_a_revisar = sorted(
+                    df_facturas_bloqueadas["cuenta"].unique().tolist()
+                )
+                st.warning(
+                    f"Revisa manualmente {len(proveedores_a_revisar):,} proveedor(es) "
+                    f"con anticipo AB/SA asociado a {len(df_facturas_bloqueadas):,} "
+                    "factura(s) propuesta(s). No se bloquea ningún pago automáticamente: "
+                    f"proveedores: {', '.join(str(p) for p in proveedores_a_revisar)}."
                 )
                 st.dataframe(df_facturas_bloqueadas, use_container_width=True, hide_index=True)
             if not df_documentos_retenidos.empty:
