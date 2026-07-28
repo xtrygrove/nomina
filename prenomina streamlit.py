@@ -163,8 +163,15 @@ def validate_payment_risk(
     Las notas de crédito/débito (EC/ED) son correcciones de monto al pago del
     proveedor y se incluyen siempre en la nómina pagable.
 
+    Un AB/SA sólo se considera anticipo ya contabilizado (y por lo tanto ya
+    pagado, sin deuda pendiente contra el acreedor) cuando su importe está
+    contabilizado con signo positivo en la cuenta del acreedor. Un AB/SA con
+    signo negativo no constituye evidencia de un anticipo ya cubierto, por lo
+    que no gatilla la alerta preventiva.
+
     Además, se marca `requiere_revision_manual` cuando un proveedor tiene
-    anticipos AB/SA relacionados, para validar el pago antes de liberarlo.
+    anticipos AB/SA (con signo positivo) relacionados, para validar el pago
+    antes de liberarlo.
     """
     document_type_column = get_document_type_column(df_nomina)
     amount_column = get_amount_column(df_nomina)
@@ -189,12 +196,14 @@ def validate_payment_risk(
     source_df["clase_documento_sap"] = (
         source_df[source_type_column].fillna("").astype(str).str.strip().str.upper()
     )
-    source_df["monto_comparacion"] = (
-        pd.to_numeric(source_df[source_amount_column], errors="coerce").abs().round(0)
-    )
-    advances = source_df[
-        source_df["clase_documento_sap"].isin(GENERIC_ACCOUNTING_DOCUMENT_TYPES)
-    ].copy()
+    source_df["monto_bruto"] = pd.to_numeric(source_df[source_amount_column], errors="coerce")
+    source_df["monto_comparacion"] = source_df["monto_bruto"].abs().round(0)
+    # Sólo un AB/SA contabilizado en positivo representa un anticipo ya
+    # pagado; uno en negativo no acredita que no exista deuda con el acreedor.
+    advance_confirmed_mask = source_df["clase_documento_sap"].isin(
+        GENERIC_ACCOUNTING_DOCUMENT_TYPES
+    ) & source_df["monto_bruto"].gt(0)
+    advances = source_df[advance_confirmed_mask].copy()
     advances["indice_anticipo"] = advances.index
 
     invoices = validated_df[

@@ -22,7 +22,8 @@ class PaymentRiskTests(unittest.TestCase):
                 "cuenta": [1001, 1001, 1002],
                 "n_documento": [10, 20, 30],
                 "clase_de_documento": ["AB", "EF", "EF"],
-                "importe_en_moneda_doc": [-5000, -5000, -5000],
+                # El AB va en positivo: es un anticipo ya contabilizado (pagado).
+                "importe_en_moneda_doc": [5000, -5000, -5000],
             }
         )
 
@@ -31,6 +32,22 @@ class PaymentRiskTests(unittest.TestCase):
         self.assertEqual(payable["n_documento"].tolist(), [30])
         self.assertEqual(blocked["n_documento"].tolist(), [20])
         self.assertIn(10, retained["n_documento"].tolist())
+
+    def test_negative_sign_advance_does_not_block_payment(self) -> None:
+        """Un AB/SA en negativo no acredita un anticipo ya pagado."""
+        source = pd.DataFrame(
+            {
+                "cuenta": [1001, 1001],
+                "n_documento": [10, 20],
+                "clase_de_documento": ["AB", "EF"],
+                "importe_en_moneda_doc": [-5000, -5000],
+            }
+        )
+
+        payable, _, blocked = MODULE.validate_payment_risk(source)
+
+        self.assertEqual(payable["n_documento"].tolist(), [10, 20])
+        self.assertTrue(blocked.empty)
 
     def test_keeps_invoice_when_amount_does_not_match_advance(self) -> None:
         source = pd.DataFrame(
@@ -134,7 +151,8 @@ class PaymentRiskTests(unittest.TestCase):
                 "cuenta": [1001],
                 "n_documento": [10],
                 "clase_de_documento": ["AB"],
-                "importe_en_moneda_doc": [-5_000],
+                # Positivo: anticipo ya contabilizado (pagado) contra el acreedor.
+                "importe_en_moneda_doc": [5_000],
             }
         )
 
